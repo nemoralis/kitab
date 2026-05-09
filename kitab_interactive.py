@@ -483,13 +483,28 @@ def run_once(prefill_bibid: str | None, prefill_output: str | None) -> None:
             if ocr_ok and add_latin_search_layer is not None:
                 console.print()
                 if Confirm.ask("  [bold]Add Latin search layer?[/bold] [dim](makes Cyrillic text searchable via Latin)[/dim]", default=True):
-                    console.print("  [dim]Adding invisible Latin text layer...[/dim]")
-                    if add_latin_search_layer(ocr_params["output_pdf"]):
+                    
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold cyan]Transliterating…"),
+                        BarColumn(bar_width=40),
+                        TaskProgressColumn(),
+                        TextColumn("[dim]{task.fields[status]}"),
+                        console=console,
+                        transient=False,
+                    ) as progress:
+                        task = progress.add_task("  Processing", total=100, status="")
+                        
+                        def update_progress(current, total):
+                            progress.update(task, completed=current, total=total, status=f"page {current}/{total}")
+                            
+                        success = add_latin_search_layer(ocr_params["output_pdf"], progress_callback=update_progress)
+
+                    if success:
                         console.print("  [green]✓[/green] Latin search layer added successfully.")
                         latin_added = True
                     else:
                         console.print("  [red]✗[/red] Failed to add Latin search layer.")
-                        
     else:
         console.print("\n  [yellow]⚠[/yellow]  No PDF produced — skipping OCR.\n")
 

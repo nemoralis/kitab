@@ -72,7 +72,7 @@ def transliterate(text: str) -> str:
         result.append(CYRILLIC_TO_LATIN.get(char, char))
     return "".join(result)
 
-def add_latin_search_layer(pdf_path: str) -> bool:
+def add_latin_search_layer(pdf_path: str, progress_callback=None) -> bool:
     """
     Opens the PDF, extracts text, transliterates to Latin, and injects
     an invisible text layer. Saves the PDF in-place.
@@ -88,7 +88,8 @@ def add_latin_search_layer(pdf_path: str) -> bool:
     try:
         doc = fitz.open(pdf_path)
         
-        for page in doc:
+        total_pages = len(doc)
+        for i, page in enumerate(doc):
             # Extract text blocks as a dictionary
             text_data = page.get_text("dict")
             
@@ -118,6 +119,9 @@ def add_latin_search_layer(pdf_path: str) -> bool:
                                 render_mode=3,
                                 color=(0, 0, 0)
                             )
+            
+            if progress_callback:
+                progress_callback(i + 1, total_pages)
         
         # Save in-place
         doc.saveIncr()
