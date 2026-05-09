@@ -206,7 +206,7 @@ def run_download(params: dict) -> str | None:
         return existing if existing else None
 
     cmd = [sys.executable, KITAB_CLI, params["bibid_raw"],
-           "-o", output_dir, "--json",
+           "-o", output_dir, "--json", "-w", "5",
            "-s", str(params["start_page"])]
 
     if params["end_page"]:

@@ -20,6 +20,7 @@ import time
 import json
 import requests
 import urllib3
+import concurrent.futures
 from PIL import Image
 try:
     import fitz
@@ -39,6 +40,7 @@ HEADERS = {
 }
 DELAY = 2
 RETRY_COUNT = 3
+WORKERS = 5
 MIN_IMAGE_SIZE = 1024
 
 # ── Output helpers ────────────────────────────────────────────────────────────
@@ -201,7 +203,7 @@ def create_pdf(book_dir, bibid, start_page, end_page, delete_images):
                 log(f"Failed to delete {img_file}: {e}", "warning")
 
 def download_book(bibid, output_dir, delete_images, start_page=1, end_page=None,
-                  delay=DELAY, retries=RETRY_COUNT):
+                  delay=DELAY, retries=RETRY_COUNT, workers=WORKERS):
     book_dir = os.path.join(output_dir, f"book_{bibid}")
     os.makedirs(book_dir, exist_ok=True)
 
@@ -227,25 +229,39 @@ def download_book(bibid, output_dir, delete_images, start_page=1, end_page=None,
 
     with requests.Session() as session:
         session.headers.update(HEADERS)
-        for page_no in range(start_page, end_page + 1):
-            output_file = os.path.join(book_dir, f"page_{page_no}.jpg")
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_page = {}
+            for page_no in range(start_page, end_page + 1):
+                output_file = os.path.join(book_dir, f"page_{page_no}.jpg")
 
-            if os.path.exists(output_file) and os.path.getsize(output_file) >= MIN_IMAGE_SIZE:
-                pages_downloaded += 1
-                emit({"type": "skipped",  "page": page_no})          # ← actual page_no, not counter
-                emit({"type": "progress", "page": pages_downloaded,
-                      "total": end_page - start_page + 1})
-                continue
+                if os.path.exists(output_file) and os.path.getsize(output_file) >= MIN_IMAGE_SIZE:
+                    pages_downloaded += 1
+                    emit({"type": "skipped",  "page": page_no})          # ← actual page_no, not counter
+                    emit({"type": "progress", "page": pages_downloaded,
+                          "total": end_page - start_page + 1})
+                    continue
 
-            if download_page(session, bibid, page_no, output_file, delay=delay, retries=retries):
-                pages_downloaded += 1
-                emit({"type": "progress", "page": pages_downloaded,
-                      "total": end_page - start_page + 1,
-                      "msg": f"Page {page_no} downloaded successfully.", "level": "success"})
-            else:
-                pages_failed += 1
-                emit({"type": "failed", "page": page_no,
-                      "msg": f"Page {page_no} failed.", "level": "warning"})
+                future = executor.submit(download_page, session, bibid, page_no, output_file, delay, retries)
+                future_to_page[future] = page_no
+
+            for future in concurrent.futures.as_completed(future_to_page):
+                page_no = future_to_page[future]
+                try:
+                    success = future.result()
+                    if success:
+                        pages_downloaded += 1
+                        emit({"type": "progress", "page": pages_downloaded,
+                              "total": end_page - start_page + 1,
+                              "msg": f"Page {page_no} downloaded successfully.", "level": "success"})
+                    else:
+                        pages_failed += 1
+                        emit({"type": "failed", "page": page_no,
+                              "msg": f"Page {page_no} failed.", "level": "warning"})
+                except Exception as exc:
+                    pages_failed += 1
+                    emit({"type": "failed", "page": page_no,
+                          "msg": f"Page {page_no} raised an exception: {exc}", "level": "error"})
 
     log("Combining images into a PDF…", "info")
     create_pdf(book_dir, bibid, start_page, end_page, delete_images)
@@ -264,6 +280,7 @@ def main():
     parser.add_argument("-s", "--start",        type=int, default=1,    help="Start page (default: 1)")
     parser.add_argument("-e", "--end",          type=int, default=None, help="End page (default: last page)")
     parser.add_argument("-d", "--delete",       action="store_true",    help="Delete images after PDF creation")
+    parser.add_argument("-w", "--workers",      type=int,   default=WORKERS,      help=f"Concurrent download workers (default: {WORKERS})")
     parser.add_argument("-D", "--delay",        type=float, default=DELAY,        help=f"Seconds between page requests (default: {DELAY})")
     parser.add_argument("-r", "--retries",      type=int,   default=RETRY_COUNT,  help=f"Retry attempts per page (default: {RETRY_COUNT})")
     parser.add_argument("--json",               action="store_true",    help="Emit newline-delimited JSON events")
@@ -288,6 +305,7 @@ def main():
         end_page=args.end,
         delay=args.delay,
         retries=args.retries,
+        workers=args.workers,
     )
 
 if __name__ == "__main__":
