@@ -1,0 +1,60 @@
+name: Build Kitab GUI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: Build with PyInstaller
+      run: pyinstaller --noconsole --onefile kitab_gui.py
+      
+    - name: Rename executable (Windows)
+      if: matrix.os == 'windows-latest'
+      run: move dist\kitab_gui.exe dist\Kitab-Windows.exe
+      shell: cmd
+      
+    - name: Rename executable (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: mv dist/kitab_gui dist/Kitab-Linux
+      
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Kitab-${{ matrix.os }}
+        path: |
+          dist/Kitab-Windows.exe
+          dist/Kitab-Linux
+          
+    - name: Upload Release Asset
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/Kitab-Windows.exe
+          dist/Kitab-Linux
