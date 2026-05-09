@@ -146,13 +146,63 @@ def gather_download_params(prefill_bibid: str | None = None,
 
 # ── Step 2: download ──────────────────────────────────────────────────────────
 
+def _check_existing_book(bibid: str, output_dir: str) -> str | None:
+    """
+    Inspect output_dir/book_{bibid}/ and return one of:
+      - the existing PDF path  (if PDF present)
+      - None                   (continue with download)
+
+    Prompts the user when relevant content already exists.
+    """
+    book_dir = os.path.join(output_dir, f"book_{bibid}")
+    pdf_path = os.path.join(book_dir, f"book_{bibid}.pdf")
+
+    # ── Case 1: finished PDF already present ─────────────────────────────────
+    if os.path.exists(pdf_path):
+        size_mb = os.path.getsize(pdf_path) / 1_048_576
+        console.print(
+            f"\n  [yellow]⚠[/yellow]  A PDF for book [cyan]{bibid}[/cyan] already exists:\n"
+            f"  [dim]{pdf_path}[/dim]  ({size_mb:.1f} MB)\n"
+        )
+        if Confirm.ask("  [bold]Skip download and use the existing PDF?[/bold]", default=True):
+            console.print(f"  [green]✓[/green] Using existing PDF.\n")
+            return pdf_path
+        # User chose to re-download — fall through
+        console.print("  Proceeding with download (existing pages will be reused).\n")
+        return None
+
+    # ── Case 2: page images exist but no PDF yet ──────────────────────────────
+    if os.path.isdir(book_dir):
+        cached = [
+            f for f in Path(book_dir).glob("page_*.jpg")
+            if f.stat().st_size >= 1024
+        ]
+        if cached:
+            console.print(
+                f"\n  [yellow]⚠[/yellow]  [cyan]{len(cached)}[/cyan] page image(s) already cached "
+                f"in [dim]{book_dir}[/dim].\n"
+                "  [dim]kitab_cli will skip already-downloaded pages automatically.[/dim]\n"
+            )
+            if not Confirm.ask("  [bold]Continue download (resume)?[/bold]", default=True):
+                console.print("  [dim]Download skipped by user.[/dim]\n")
+                return ""   # empty string = user cancelled, no PDF
+    return None
+
+
 def run_download(params: dict) -> str | None:
     bibid      = params["bibid"]
     output_dir = params["output_dir"]
 
+    # Pre-flight: check for existing content
+    existing = _check_existing_book(bibid, output_dir)
+    if existing is not None:
+        # "" means user cancelled; any other string is an existing PDF path
+        return existing if existing else None
+
     cmd = [sys.executable, KITAB_CLI, params["bibid_raw"],
            "-o", output_dir, "--json",
            "-s", str(params["start_page"])]
+
     if params["end_page"]:
         cmd += ["-e", str(params["end_page"])]
     if params["delete_images"]:
@@ -324,23 +374,10 @@ def run_ocr(params: dict) -> bool:
     console.print(f"  [dim]$ {' '.join(cmd)}[/dim]\n")
 
     try:
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1,
-        )
-        for line in proc.stdout:          # type: ignore[union-attr]
-            line = line.rstrip()
-            if not line:
-                continue
-            low = line.lower()
-            if "error" in low:
-                console.print(f"  [red]{line}[/red]")
-            elif "warn" in low or "empty page" in low or "diacritic" in low:
-                console.print(f"  [yellow]{line}[/yellow]")
-            elif "━" in line or "%" in line or "savings" in low or "output file" in low:
-                console.print(f"  [cyan]{line}[/cyan]")
-            else:
-                console.print(f"  [dim]{line}[/dim]")
+        # Let ocrmypdf inherit the real terminal so its own Rich progress bars
+        # render correctly. Piping stdout/stderr makes Rich think it's not a TTY
+        # and suppresses the animated progress output.
+        proc = subprocess.Popen(cmd)
         proc.wait()
     except FileNotFoundError:
         console.print("  [red]✗[/red] [bold]ocrmypdf[/bold] not found.\n"
