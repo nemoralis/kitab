@@ -1,6 +1,6 @@
 # 📚 Kitab — Azerbaijan National Library Downloader & OCR Converter
 
-**Kitab** (کتاب — "book" in Azerbaijani) is a pair of Python scripts for downloading books from the [Azerbaijan National Library](http://web2.anl.az:81/read) and optionally applying OCR to produce searchable PDFs.
+**Kitab** ("book" in Azerbaijani) is a pair of Python scripts for downloading books from the [Azerbaijan National Library](https://ek.anl.az/search/query?theme=e-kataloq) and optionally applying OCR to produce searchable PDFs.
 
 | Script | Purpose |
 |---|---|
@@ -13,7 +13,7 @@
 
 ### Python packages
 ```bash
-pip install requests Pillow rich
+pip install requests pillow rich
 # Optional but recommended — faster PDF creation and metadata support:
 pip install pymupdf
 ```
@@ -42,51 +42,18 @@ python3 kitab_interactive.py vtls000233649
 python3 kitab_interactive.py vtls000233649 -o ~/books
 ```
 
-### Headless / scripting mode
-```bash
-python3 kitab_cli.py vtls000233649 -o ~/books -s 1 -e 60 -d
-```
-
 ---
 
-## `kitab_cli.py` reference
+## `kitab_cli.py`
 
-```
-usage: kitab_cli.py [-h] [-o OUTPUT] [-s START] [-e END] [-d] [-D DELAY] [-r RETRIES] [--json] bibid
-```
+This repo uses an improved fork of the original downloader. For full flag documentation, output structure, and the JSON event protocol, refer to the **[upstream docs at cavidaga/kitab](https://github.com/cavidaga/kitab)**.
+
+Additional flags introduced in this fork:
 
 | Flag | Default | Description |
 |---|---|---|
-| `bibid` | *(required)* | Book ID — numeric (`233649`) or `vtls` form (`vtls000233649`) |
-| `-o`, `--output` | `.` | Output directory |
-| `-s`, `--start` | `1` | First page to download |
-| `-e`, `--end` | *(last)* | Last page to download |
-| `-d`, `--delete` | off | Delete source images after PDF is created |
 | `-D`, `--delay` | `2` | Seconds to wait between page requests |
 | `-r`, `--retries` | `3` | Retry attempts per failed page (exponential back-off) |
-| `--json` | off | Emit newline-delimited JSON events instead of plain text |
-
-### Output structure
-```
-~/books/
-└── book_233649/
-    ├── page_1.jpg … page_60.jpg   ← deleted if -d is used
-    └── book_233649.pdf
-```
-
-### JSON event protocol (`--json`)
-
-Each line on stdout is a JSON object. Useful for driving an Electron UI or other host.
-
-| Event | Fields |
-|---|---|
-| `total` | `total` — number of pages to download |
-| `progress` | `page`, `total` |
-| `skipped` | `page` — already downloaded, cache hit |
-| `failed` | `page` |
-| `pdf` | `path` — absolute path to the created PDF |
-| `log` | `level` (`info`/`warning`/`success`/`error`), `msg` |
-| `done` | `downloaded`, `failed` |
 
 ---
 
@@ -132,17 +99,15 @@ The script walks you through:
 ## Examples
 
 ```bash
-# Download pages 1–60, delete JPEGs, emit JSON for scripting
-python3 kitab_cli.py vtls000233649 -o ~/books -s 1 -e 60 -d --json
-
-# Faster (1 s delay) with more retries on a flaky connection
-python3 kitab_cli.py 233649 -o ~/books -D 1 -r 5
+# Interactive — pre-fill book ID and output directory
+python3 kitab_interactive.py vtls000233649 -o ~/books
 
 # Manual OCR after a previous download
 ocrmypdf -l aze_cyrl+rus --deskew --clean \
     ~/books/book_233649/book_233649.pdf \
     ~/books/book_233649/book_233649_ocr.pdf
 ```
+
 
 ---
 
