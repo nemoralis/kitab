@@ -15,6 +15,12 @@ import sys
 from pathlib import Path
 
 try:
+    from kitab_transliterate import add_latin_search_layer
+except ImportError:
+    # Handle missing script gracefully
+    add_latin_search_layer = None
+
+try:
     from rich import box
     from rich.align import Align
     from rich.console import Console
@@ -401,6 +407,7 @@ def print_summary(
     pdf_path: str | None,
     ocr: dict | None,
     ocr_ok: bool,
+    latin_added: bool = False,
 ) -> None:
     console.print()
     rule("Summary", "bold green")
@@ -428,6 +435,11 @@ def print_summary(
             ocr_size = f"  [dim]{ocr_mb:.1f} MB[/dim]"
         tbl.add_row("OCR output",   f"{ocr['output_pdf']}{ocr_size}  {status}")
         tbl.add_row("OCR language", ocr["lang"])
+        
+        if latin_added:
+            tbl.add_row("Latin search", "[green]✓ added (invisible layer)[/green]")
+        elif ocr_ok and add_latin_search_layer is not None:
+            tbl.add_row("Latin search", "[dim]skipped[/dim]")
     else:
         tbl.add_row("OCR", "[dim]skipped[/dim]")
 
@@ -461,15 +473,27 @@ def run_once(prefill_bibid: str | None, prefill_output: str | None) -> None:
 
     ocr_params: dict | None = None
     ocr_ok = False
+    latin_added = False
 
     if pdf_path:
         ocr_params = gather_ocr_params(pdf_path)
         if ocr_params:
             ocr_ok = run_ocr(ocr_params)
+            
+            if ocr_ok and add_latin_search_layer is not None:
+                console.print()
+                if Confirm.ask("  [bold]Add Latin search layer?[/bold] [dim](makes Cyrillic text searchable via Latin)[/dim]", default=True):
+                    console.print("  [dim]Adding invisible Latin text layer...[/dim]")
+                    if add_latin_search_layer(ocr_params["output_pdf"]):
+                        console.print("  [green]✓[/green] Latin search layer added successfully.")
+                        latin_added = True
+                    else:
+                        console.print("  [red]✗[/red] Failed to add Latin search layer.")
+                        
     else:
         console.print("\n  [yellow]⚠[/yellow]  No PDF produced — skipping OCR.\n")
 
-    print_summary(dl_params, pdf_path, ocr_params, ocr_ok)
+    print_summary(dl_params, pdf_path, ocr_params, ocr_ok, latin_added)
 
 
 def main() -> None:
