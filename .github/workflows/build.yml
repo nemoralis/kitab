@@ -2,9 +2,8 @@ name: Build Kitab GUI
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    tags:
+      - 'v*'
   release:
     types: [published]
 
@@ -31,7 +30,33 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Build with PyInstaller
+    - name: Download & Extract OCR Binaries (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        mkdir -p bin
+        # Download Tesseract InnoSetup installer and extract via 7z
+        curl -L -o tesseract.exe https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-5.3.3.20231005.exe
+        7z x tesseract.exe -obin/tesseract
+        
+        # Download Ghostscript NSIS installer and extract via 7z
+        curl -L -o gs.exe https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10031/gs10031w64.exe
+        7z x gs.exe -obin/ghostscript
+        
+        # Download required language data for Tesseract
+        mkdir -p bin/tesseract/tessdata
+        curl -L -o bin/tesseract/tessdata/aze_cyrl.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/aze_cyrl.traineddata
+        curl -L -o bin/tesseract/tessdata/aze.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/aze.traineddata
+        curl -L -o bin/tesseract/tessdata/rus.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/rus.traineddata
+        curl -L -o bin/tesseract/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata
+        curl -L -o bin/tesseract/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata
+
+    - name: Build with PyInstaller (Windows)
+      if: matrix.os == 'windows-latest'
+      run: pyinstaller --noconsole --onefile --add-data "bin;bin" kitab_gui.py
+      
+    - name: Build with PyInstaller (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: pyinstaller --noconsole --onefile kitab_gui.py
       
     - name: Rename executable (Windows)

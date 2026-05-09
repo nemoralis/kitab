@@ -17,6 +17,22 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QThread, Signal, Qt
 
+# Environment setup for PyInstaller bundled binaries (Windows only)
+if getattr(sys, 'frozen', False) and sys.platform == 'win32':
+    bundle_dir = sys._MEIPASS
+    bin_dir = os.path.join(bundle_dir, "bin")
+    tesseract_dir = os.path.join(bin_dir, "tesseract")
+    ghostscript_dir = os.path.join(bin_dir, "ghostscript", "bin")
+    
+    # Inject bundled binaries into PATH
+    added_paths = os.pathsep.join([tesseract_dir, ghostscript_dir])
+    os.environ["PATH"] = added_paths + os.pathsep + os.environ.get("PATH", "")
+    
+    # Inform Tesseract where its language data is
+    tessdata_dir = os.path.join(tesseract_dir, "tessdata")
+    if os.path.exists(tessdata_dir):
+        os.environ["TESSDATA_PREFIX"] = tessdata_dir
+
 # Assuming the GUI is in the same directory as the CLI scripts
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KITAB_CLI = os.path.join(BASE_DIR, "kitab_cli.py")
