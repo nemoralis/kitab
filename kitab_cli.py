@@ -21,7 +21,10 @@ import json
 import requests
 import urllib3
 import concurrent.futures
-from PIL import Image
+from PIL import Image, ImageFile
+
+# Configure Pillow to tolerate truncated JPEGs from the server
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 try:
     import fitz
 except ImportError:
@@ -107,6 +110,15 @@ def download_page(session, bibid, page_no, output_file, delay=DELAY, retries=RET
                 f.write(response.content)
             if os.path.getsize(output_file) < MIN_IMAGE_SIZE:
                 raise ValueError("File size too small. The image may be invalid.")
+                
+            # Validate and auto-repair truncated JPEGs
+            try:
+                with Image.open(output_file) as img:
+                    img.load()  # Will trigger truncation repair because LOAD_TRUNCATED_IMAGES = True
+                    img.save(output_file, "JPEG") # Save repaired version
+            except Exception as e:
+                raise ValueError(f"Corrupt image cannot be parsed: {e}")
+                
             return True
         except Exception as e:
             last_error = e
