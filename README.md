@@ -52,7 +52,8 @@ Additional flags introduced in this fork:
 
 | Flag | Default | Description |
 |---|---|---|
-| `-D`, `--delay` | `2` | Seconds to wait between page requests |
+| `-w`, `--workers` | `5` | Concurrent download workers |
+| `-D`, `--delay` | `2` | Seconds to wait between each worker's page request |
 | `-r`, `--retries` | `3` | Retry attempts per failed page (exponential back-off) |
 
 ---
@@ -74,12 +75,13 @@ The script walks you through:
 2. **Output directory** — verifies it is writable before proceeding
 3. **Page range** — start / end page (blank = all pages)
 4. **Delete images?** — clean up JPEGs after PDF creation
-5. **Live download progress** — spinner, progress bar, elapsed time
+5. **Live download progress** — spinner, progress bar, elapsed time (uses 5 concurrent workers)
 6. **Apply OCR?** — yes/no
 7. **Language preset** — 8 presets or a custom Tesseract language string
 8. **OCR options** — deskew, clean, auto-rotate, PDF/A output
-9. **Summary table** — paths and file sizes for both PDFs
-10. **Download another book?** — loop without restarting
+9. **Latin search layer** — optionally injects an invisible Latin transliteration over Cyrillic OCR text
+10. **Summary table** — paths and file sizes for both PDFs
+11. **Download another book?** — loop without restarting
 
 ### OCR language presets
 
@@ -114,9 +116,11 @@ ocrmypdf -l aze_cyrl+rus --deskew --clean \
 ## Notes
 
 - **PDF creation** — uses PyMuPDF (`fitz`) when available for faster, smaller PDFs with embedded metadata; falls back to Pillow automatically.
+- **Concurrent downloads** — uses a thread pool (default 5 workers) to fetch multiple pages simultaneously, drastically reducing download time.
+- **Auto-repair** — automatically detects and fixes truncated JPEGs caused by dropped connections, preventing `ocrmypdf` crashes later in the pipeline.
+- **Latin search layer** — via `kitab_transliterate.py`, converts Azerbaijani Cyrillic text to modern Latin and injects it as a parallel invisible text layer into the same PDF.
 - **Metadata** — the script attempts to fetch title, author, and date from the library catalogue. This request sometimes fails due to SSL issues on the library server; the PDF is still created successfully.
 - **Resume support** — already-downloaded pages are detected by file size and skipped automatically, so interrupted downloads can be safely restarted.
-- **Rate limiting** — a configurable delay (default 2 s) is inserted between page requests to avoid overloading the server.
 
 ---
 
